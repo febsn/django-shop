@@ -5,10 +5,11 @@ from django.core import exceptions
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.template import RequestContext
+from django.template.base import TemplateDoesNotExist
 from django.template.loader import select_template
 from django.utils.six import with_metaclass
 from django.utils.html import strip_spaces_between_tags
-from django.utils.safestring import mark_safe
+from django.utils.safestring import mark_safe, SafeText
 from jsonfield.fields import JSONField
 from rest_framework import serializers
 from rest_framework.fields import empty
@@ -71,7 +72,10 @@ class ProductCommonSerializer(serializers.ModelSerializer):
             (app_label, self.label, 'product', postfix),
             ('shop', self.label, 'product', postfix),
         ]
-        template = select_template(['{0}/products/{1}-{2}-{3}.html'.format(*p) for p in params])
+        try:
+            template = select_template(['{0}/products/{1}-{2}-{3}.html'.format(*p) for p in params])
+        except TemplateDoesNotExist:
+            return SafeText()
         request = self.context['request']
         # when rendering emails, we require an absolute URI, so that media can be accessed from
         # the mail client
@@ -188,7 +192,16 @@ class WatchListSerializer(serializers.ListSerializer):
     def get_attribute(self, instance):
         manager = super(WatchListSerializer, self).get_attribute(instance)
         assert isinstance(manager, models.Manager) and issubclass(manager.model, BaseCartItem)
-        return manager.filter(quantity=0)
+        return self.remove_duplicates(manager.filter(quantity=0))
+
+    def remove_duplicates(self, watch_items):
+        prev_product_id = None
+        exclude_item_ids = []
+        for item_id, product_id in watch_items.order_by('product').values_list('id', 'product'):
+            if product_id == prev_product_id:
+                exclude_item_ids.append(item_id)
+            prev_product_id = product_id
+        return watch_items.exclude(id__in=exclude_item_ids)
 
 
 class ItemModelSerializer(serializers.ModelSerializer):
@@ -196,7 +209,7 @@ class ItemModelSerializer(serializers.ModelSerializer):
         model = CartItemModel
 
     def create(self, validated_data):
-        validated_data['cart'] = CartModel.objects.get_from_request(self.context['request'])
+        assert 'cart' in validated_data
         cart_item = CartItemModel.objects.get_or_create(**validated_data)[0]
         cart_item.save()
         return cart_item
@@ -232,6 +245,10 @@ class CartItemSerializer(BaseItemSerializer):
         list_serializer_class = CartListSerializer
         exclude = ('cart', 'id',)
 
+    def create(self, validated_data):
+        validated_data['cart'] = CartModel.objects.get_from_request(self.context['request'])
+        return super(CartItemSerializer, self).create(validated_data)
+
 
 class WatchItemSerializer(BaseItemSerializer):
     class Meta(BaseItemSerializer.Meta):
@@ -239,7 +256,8 @@ class WatchItemSerializer(BaseItemSerializer):
         fields = ('product', 'url', 'summary', 'quantity', 'extra',)
 
     def create(self, validated_data):
-        validated_data['quantity'] = 0
+        cart = CartModel.objects.get_from_request(self.context['request'])
+        validated_data.update(cart=cart, quantity=0)
         return super(WatchItemSerializer, self).create(validated_data)
 
 
@@ -251,11 +269,6 @@ class BaseCartSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartModel
 
-    def to_representation(self, cart):
-        cart.update(self.context['request'])
-        representation = super(BaseCartSerializer, self).to_representation(cart)
-        return representation
-
 
 class CartSerializer(BaseCartSerializer):
     items = CartItemSerializer(many=True, read_only=True)
@@ -263,12 +276,21 @@ class CartSerializer(BaseCartSerializer):
     class Meta(BaseCartSerializer.Meta):
         fields = ('items', 'subtotal', 'extra_rows', 'total',)
 
+    def to_representation(self, cart):
+        cart.update(self.context['request'])
+        representation = super(BaseCartSerializer, self).to_representation(cart)
+        return representation
+
 
 class WatchSerializer(BaseCartSerializer):
     items = WatchItemSerializer(many=True, read_only=True)
 
     class Meta(BaseCartSerializer.Meta):
         fields = ('items',)
+
+    def to_representation(self, cart):
+        representation = super(BaseCartSerializer, self).to_representation(cart)
+        return representation
 
 
 class CheckoutSerializer(BaseCartSerializer):
@@ -292,8 +314,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return serializer.data
 
 
-class OrderSerializer(serializers.ModelSerializer):
+class OrderListSerializer(serializers.ModelSerializer):
     identifier = serializers.CharField()
+    url = serializers.URLField(source='get_absolute_url', read_only=True)
+    status = serializers.CharField(source='status_name', read_only=True)
     subtotal = MoneyField()
     total = MoneyField()
 
@@ -302,11 +326,7 @@ class OrderSerializer(serializers.ModelSerializer):
         exclude = ('id', 'user', 'stored_request', '_subtotal', '_total',)
 
 
-class OrderListSerializer(OrderSerializer):
-    url = serializers.URLField(source='get_absolute_url', read_only=True)
-
-
-class OrderDetailSerializer(OrderSerializer):
+class OrderDetailSerializer(OrderListSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
 
 

@@ -33,8 +33,8 @@ class OrderManager(models.Manager):
         for cart_item in cart.items.all():
             cart_item.update(request)
             order_item = OrderItemModel(order=order)
-            order_item.populate_from_cart_item(cart_item, request)
-            order_item.save()
+            if order_item.populate_from_cart_item(cart_item, request):
+                order_item.save()
         order.populate_from_cart(cart, request)
         order.save()
         cart.delete()
@@ -78,8 +78,8 @@ class OrderManager(models.Manager):
 
 class WorkflowMixinMetaclass(deferred.ForeignKeyBuilder):
     """
-    Add configured Workflow mixin classes to `OrderModel` and `OrderPayment` to customize all kinds
-    of state transitions in a pluggable manner.
+    Add configured Workflow mixin classes to `OrderModel` and `OrderPayment` to customize
+    all kinds of state transitions in a pluggable manner.
     """
     def __new__(cls, name, bases, attrs):
         if 'BaseOrder' in (b.__name__ for b in bases):
@@ -109,7 +109,7 @@ class BaseOrder(with_metaclass(WorkflowMixinMetaclass, models.Model)):
     }
     decimalfield_kwargs = {
         'max_digits': 30,
-        'decimal_places': 3,
+        'decimal_places': 2,
     }
     decimal_exp = Decimal('.' + '0' * decimalfield_kwargs['decimal_places'])
 
@@ -160,9 +160,14 @@ class BaseOrder(with_metaclass(WorkflowMixinMetaclass, models.Model)):
         """
         return MoneyMaker(self.currency)(self._total)
 
+    @classmethod
+    def round_amount(cls, amount):
+        if amount.is_finite():
+            return Decimal(amount).quantize(cls.decimal_exp, ROUND_UP)
+
     def get_absolute_url(self):
         """
-        Returns the URL of the page with the detail view for this order
+        Returns the URL for the detail view of this order
         """
         return urljoin(OrderModel.objects.get_summary_url(), str(self.id))
 
@@ -177,17 +182,12 @@ class BaseOrder(with_metaclass(WorkflowMixinMetaclass, models.Model)):
         self.extra = dict(cart.extra)
         self.extra.update(rows=[(modifier, extra_row.data) for modifier, extra_row in cart.extra_rows.items()])
 
-    @transition(field=status, source='*', target='created',
-                custom=dict(admin=True, button_name=_("Notify Customer")))
-    def notify_user(self, by=None):
-        print 'notify ', by
-
     def save(self, *args, **kwargs):
         """
         Before saving the Order object to the database, round the total to the given decimal_places
         """
-        self._subtotal = self._subtotal.quantize(self.decimal_exp, ROUND_UP)
-        self._total = self._total.quantize(self.decimal_exp, ROUND_UP)
+        self._subtotal = BaseOrder.round_amount(self._subtotal)
+        self._total = BaseOrder.round_amount(self._total)
         super(BaseOrder, self).save(*args, **kwargs)
 
     def get_amount_paid(self):
@@ -254,6 +254,7 @@ class BaseOrderItem(with_metaclass(deferred.ForeignKeyBuilder, models.Model)):
     """
     An item for an order.
     """
+    # TODO: add foreign key to OrderShipping
     order = deferred.ForeignKey(BaseOrder, related_name='items', verbose_name=_("Order"))
     product_identifier = models.CharField(max_length=255, verbose_name=_("Product identifier"),
         help_text=_("Product identifier at the moment of purchase."))
@@ -282,6 +283,10 @@ class BaseOrderItem(with_metaclass(deferred.ForeignKeyBuilder, models.Model)):
         return MoneyMaker(self.order.currency)(self._line_total)
 
     def populate_from_cart_item(self, cart_item, request):
+        """
+        From a given cart item, populate the current order item.
+        Return True if operation was successful, otherwise the order item is discarded.
+        """
         self.product = cart_item.product
         self.product_name = cart_item.product.name  # store the name on the moment of purchase, in case it changes
         self.product_identifier = cart_item.product.identifier
@@ -290,5 +295,14 @@ class BaseOrderItem(with_metaclass(deferred.ForeignKeyBuilder, models.Model)):
         self.quantity = cart_item.quantity
         self.extra = dict(cart_item.extra)
         self.extra.update(rows=[(modifier, extra_row.data) for modifier, extra_row in cart_item.extra_rows.items()])
+        return True
+
+    def save(self, *args, **kwargs):
+        """
+        Before saving the OrderItem object to the database, round the amounts to the given decimal places
+        """
+        self._unit_price = BaseOrder.round_amount(self._unit_price)
+        self._line_total = BaseOrder.round_amount(self._line_total)
+        super(BaseOrderItem, self).save(*args, **kwargs)
 
 OrderItemModel = deferred.MaterializedModel(BaseOrderItem)
