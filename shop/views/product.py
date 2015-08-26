@@ -41,8 +41,13 @@ class ProductListView(generics.ListAPIView):
 
     def paginate_queryset(self, queryset):
         page = super(ProductListView, self).paginate_queryset(queryset)
-        self.paginator = page.paginator
+        try:
+            self.paginator = page.paginator
+        # if pagination is disabled, paginate_queryset will have returned None
+        except AttributeError:
+            return None
         return page
+        
 
     def filter_queryset(self, queryset):
         self.filter_context = None
@@ -53,6 +58,7 @@ class ProductListView(generics.ListAPIView):
             elif hasattr(filter_instance, 'render_context'):
                 self.filter_context = filter_instance.render_context
         qs = super(ProductListView, self).filter_queryset(queryset)
+        #? what is this?
         print qs.query
         return qs
 
