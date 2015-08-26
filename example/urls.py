@@ -12,7 +12,7 @@ admin.autodiscover()
 urlpatterns = patterns('',
     url(r'^sitemap\.xml$', 'django.contrib.sitemaps.views.sitemap',
         {'sitemaps': {'cmspages': CMSSitemap}}, name='sitemap'),
-    url(r'^shop-api/', include('shop.urls.api', namespace='shop-api')),
+    url(r'^shop-api/', include('shop.urls.rest_api', namespace='shop-api')),
 ) + i18n_patterns('',
     url(r'^admin/select2/', include('django_select2.urls')),
     url(r'^admin/', include(admin.site.urls)),
