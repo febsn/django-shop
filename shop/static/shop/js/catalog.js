@@ -25,7 +25,7 @@ djangoShopModule.directive('shopScrollSpy', ['$document', function($document) {
 
 djangoShopModule.controller('AddToCartCtrl', ['$scope', '$http', '$window', '$modal',
                                                function($scope, $http, $window, $modal) {
-	var updateUrl = $window.location.pathname + '/add-to-cart' + $window.location.search;
+	var updateUrl = $window.location.pathname + 'add-to-cart/' + $window.location.search;
 	var isLoading = false;
 	var prevContext = null;
 
