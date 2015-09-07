@@ -46,15 +46,15 @@ class OrderItemInline(admin.StackedInline):
 
 
 class BaseOrderAdmin(FSMTransitionMixin, admin.ModelAdmin):
-    list_display = ('id', 'user', 'status_name', 'total', 'created_at',)
-    list_filter = ('status', 'user',)
-    search_fields = ('id', 'user__username', 'user__lastname',)
+    list_display = ('id', 'customer', 'status_name', 'total', 'created_at',)
+    list_filter = ('status', 'customer',)
+    search_fields = ('id', 'customer__user__username', 'customer__user__lastname',)
     fsm_field = ('status',)
     date_hierarchy = 'created_at'
     inlines = (OrderItemInline, OrderPaymentInline,)
-    readonly_fields = ('status_name', 'user', 'total', 'subtotal', 'created_at', 'updated_at',
+    readonly_fields = ('status_name', 'customer', 'total', 'subtotal', 'created_at', 'updated_at',
         'extra', 'stored_request',)
-    fields = ('status_name', ('created_at', 'updated_at'), ('subtotal', 'total',), 'user',
+    fields = ('status_name', ('created_at', 'updated_at'), ('subtotal', 'total',), 'customer',
         'extra', 'stored_request',)
 
     def get_form(self, request, obj=None, **kwargs):
@@ -87,7 +87,7 @@ class PrintOrderAdminMixin(object):
         order = self.get_object(request, pk)
         order_serializer = serializers.OrderDetailSerializer(order, context={'request': request})
         context = {
-            'customer': serializers.CustomerSerializer(order.user).data,
+            'customer': serializers.CustomerSerializer(order.customer).data,
             'data': order_serializer.data,
         }
         return render_to_response('shop/printing/delivery-note.html', context,
@@ -97,7 +97,7 @@ class PrintOrderAdminMixin(object):
         order = self.get_object(request, pk)
         order_serializer = serializers.OrderDetailSerializer(order, context={'request': request})
         context = {
-            'customer': serializers.CustomerSerializer(order.user).data,
+            'customer': serializers.CustomerSerializer(order.customer).data,
             'data': order_serializer.data,
         }
         return render_to_response('shop/printing/delivery-note.html', context,
