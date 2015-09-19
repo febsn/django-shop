@@ -52,6 +52,7 @@ class ProductListView(generics.ListAPIView):
             # if pagination is disabled, paginate_queryset will have returned None
             return None
         return page
+        
 
     def filter_queryset(self, queryset):
         self.filter_context = None

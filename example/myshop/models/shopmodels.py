@@ -57,7 +57,11 @@ class Product(TranslatableModel, BaseProduct):
 
     def get_absolute_url(self):
         # sorting by highest level, so that the canonical URL associates with the most generic category
-        page = self.cms_pages.order_by('-level').first()
+        try:
+            page = self.cms_pages.order_by('-depth').first()
+        # cms < 3.1 uses MPTT 'level' field
+        except FieldError:
+            page = self.cms_pages.order_by('-level').first()
         return urljoin(page.get_absolute_url(), self.slug)
 
     @property

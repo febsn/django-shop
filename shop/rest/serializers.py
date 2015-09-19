@@ -40,7 +40,7 @@ class JSONSerializerField(serializers.Field):
         return data
 
 # add JSONField to the map of customized serializers
-serializers.ModelSerializer._field_mapping[JSONField] = JSONSerializerField
+serializers.ModelSerializer.serializer_field_mapping[JSONField] = JSONSerializerField
 
 
 class ProductCommonSerializer(serializers.ModelSerializer):
