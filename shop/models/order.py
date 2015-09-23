@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 from six import with_metaclass
 from decimal import Decimal, ROUND_UP
-from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db import models, transaction
 from django.db.models.aggregates import Sum
@@ -20,7 +19,7 @@ from . import deferred
 
 
 class OrderManager(models.Manager):
-    @transaction.commit_on_success
+    @transaction.atomic
     def create_from_cart(self, cart, request):
         """
         This creates a new Order object with all its OrderItems using the current Cart object
@@ -54,7 +53,7 @@ class OrderManager(models.Manager):
 
     def get_summary_url(self):
         """
-        Returns the URL of the page with the list view for all orders related to the current user
+        Returns the URL of the page with the list view for all orders related to the current customer
         """
         if not hasattr(self, '_summary_url'):
             try:
@@ -67,7 +66,7 @@ class OrderManager(models.Manager):
 
     def get_latest_url(self):
         """
-        Returns the URL of the page with the detail view for the latest order related to the current user
+        Returns the URL of the page with the detail view for the latest order related to the current customer
         """
         try:
             return Page.objects.public().get(reverse_id='shop-order-last').get_absolute_url()
@@ -194,10 +193,18 @@ class BaseOrder(with_metaclass(WorkflowMixinMetaclass, models.Model)):
         """
         The amount paid is the sum of related orderpayments
         """
-        amount = self.orderpayment_set.aggregate(amount=Sum('amount'))['amount']
-        if amount is None:
-            amount = MoneyMaker(self.currency)(0)
-        return amount
+        if not hasattr(self, '_amount_paid'):
+            amount = self.orderpayment_set.aggregate(amount=Sum('amount'))['amount']
+            if amount is None:
+                amount = 0
+            self._amount_paid = MoneyMaker(self.currency)(amount)
+        return self._amount_paid
+
+    def get_outstanding_amount(self):
+        """
+        Return the outstanding amount paid for this order
+        """
+        return self.total - self.get_amount_paid()
 
     @classmethod
     def get_transition_name(cls, target):

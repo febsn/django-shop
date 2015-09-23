@@ -3,16 +3,13 @@ from __future__ import unicode_literals
 
 from django.db import models, migrations
 import filer.fields.file
-import jsonfield.fields
-from django.conf import settings
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('post_office', '0002_add_i18n_and_backend_alias'),
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('filer', '0002_auto_20150606_2003'),
+        ('post_office', '0003_auto_20150921_2113'),
     ]
 
     operations = [
@@ -41,5 +38,14 @@ class Migration(migrations.Migration):
             options={
             },
             bases=(models.Model,),
+        ),
+        migrations.CreateModel(
+            name='Email',
+            fields=[
+            ],
+            options={
+                'proxy': True,
+            },
+            bases=('post_office.email',),
         ),
     ]

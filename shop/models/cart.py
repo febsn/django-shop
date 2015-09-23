@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 from six import with_metaclass
 from collections import OrderedDict
-from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
@@ -204,10 +203,10 @@ class BaseCart(with_metaclass(deferred.ForeignKeyBuilder, models.Model)):
         if self.pk:
             self.items.all().delete()
             self.delete()
-    
+
     def __str__(self):
         return "{}".format(self.pk) or '(unsaved)'
-    
+
     @property
     def total_quantity(self):
         """

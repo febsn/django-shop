@@ -284,6 +284,11 @@ class CheckoutSerializer(BaseCartSerializer):
     class Meta(BaseCartSerializer.Meta):
         fields = ('subtotal', 'extra_rows', 'total',)
 
+    def to_representation(self, cart):
+        cart.update(self.context['request'])
+        representation = super(BaseCartSerializer, self).to_representation(cart)
+        return representation
+
 
 class OrderItemSerializer(serializers.ModelSerializer):
     line_total = MoneyField()
@@ -315,6 +320,13 @@ class OrderListSerializer(serializers.ModelSerializer):
 
 class OrderDetailSerializer(OrderListSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    amount_paid = MoneyField(source='get_amount_paid', read_only=True)
+    outstanding_amount = MoneyField(source='get_outstanding_amount', read_only=True)
+    is_partially_paid = serializers.SerializerMethodField(method_name='get_partially_paid',
+        help_text="Returns true, if order has been partially paid")
+
+    def get_partially_paid(self, order):
+        return order.get_amount_paid() > 0
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -322,4 +334,4 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomerModel
-        fields = ('salutation', 'user__first_name', 'user__last_name', 'user__email', 'extra',)
+        fields = ('salutation', 'first_name', 'last_name', 'email', 'extra',)

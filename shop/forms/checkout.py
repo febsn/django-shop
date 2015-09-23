@@ -1,54 +1,39 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from django.db.models import Max
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ImproperlyConfigured
+from django.db.models import Max
 from django.forms import fields, widgets
-from django.forms.models import fields_for_model
 from django.utils.translation import ugettext_lazy as _
-from django.utils import six
-from djangular.forms.angular_base import BaseFieldsModifierMetaclass
 from djangular.styling.bootstrap3.forms import Bootstrap3ModelForm
 from djangular.styling.bootstrap3.widgets import RadioSelect, RadioFieldRenderer, CheckboxInput
 from shop.models.address import AddressModel
-from shop.models.customer import CustomerModel as Customer
+from shop.models.customer import CustomerModel
 from shop.modifiers.pool import cart_modifiers_pool
 from .base import DialogForm, DialogModelForm
 
 
-class UserFieldsFormMetaclass(BaseFieldsModifierMetaclass):
-    def __new__(cls, name, bases, attrs):
-        """
-        Add fields from User model to form.
-        
-        This cannot be done at runtime as Form fields are converted by
-        django-angular at instantiation.
-        """
-        attrs.update(fields_for_model(get_user_model(), ('first_name', 'last_name', 'email',)))
-        new_class = super(UserFieldsFormMetaclass, cls).__new__(cls, name, bases, attrs)
-        new_class.base_fields.update(user_fields)
-        return new_class
-
-# aim: use above metaclass for automatically creating adding User model's fields
-# with django's fields_for_model function. How to do this without metaclass
-# conflict?
-
 class CustomerForm(DialogModelForm):
     scope_prefix = 'data.customer'
-    
+    email = fields.EmailField()
     first_name = fields.CharField()
     last_name = fields.CharField()
-    email = fields.EmailField()
-    
+
     class Meta:
-        model = Customer
-        fields = ('salutation', )
-    
-    def clean(self):
-        """Also save fields belonging to User"""
-        cleaned_data = super(CustomerForm, self).clean()
-        
-    
+        model = CustomerModel
+        exclude = ('user', 'recognized',)
+        custom_fields = ('email', 'first_name', 'last_name',)
+
+    def __init__(self, initial=None, instance=None, *args, **kwargs):
+        if instance:
+            initial = initial or {}
+            initial.update(dict((f, getattr(instance, f)) for f in self.Meta.custom_fields))
+        super(CustomerForm, self).__init__(initial=initial, instance=instance, *args, **kwargs)
+
+    def save(self, commit=True):
+        for f in self.Meta.custom_fields:
+            setattr(self.instance, f, self.cleaned_data[f])
+        return super(CustomerForm, self).save(commit)
+
     @classmethod
     def form_factory(cls, request, data, cart):
         customer_form = cls(data=data, instance=request.customer)
@@ -63,18 +48,17 @@ class GuestForm(DialogModelForm):
     form_name = 'customer_form'
 
     class Meta:
-        model = get_user_model()
+        model = get_user_model()  # since we only use the email field, use the User model directly
         fields = ('email',)
+
+    def __init__(self, initial=None, instance=None, *args, **kwargs):
+        if isinstance(instance, CustomerModel._materialized_model):
+            instance = instance.user
+        super(GuestForm, self).__init__(initial=initial, instance=instance, *args, **kwargs)
 
     @classmethod
     def form_factory(cls, request, data, cart):
-        if request.customer.is_registered():
-            raise ImproperlyConfigured('GuestForm should only be used for unregistered Customers')
-        user = get_user_model().objects.create()
-        user.save()
-        request.customer.user = user
-        request.customer.save()
-        customer_form = cls(data=data, instance=user)
+        customer_form = cls(data=data, instance=request.customer.user)
         if customer_form.is_valid():
             customer_form.save()
         else:

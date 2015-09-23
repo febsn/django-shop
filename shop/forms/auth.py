@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate, login
 from django.contrib.sites.models import get_current_site
 from django.core.exceptions import ValidationError
 from django.forms import fields, widgets, ModelForm
@@ -10,9 +9,8 @@ from django.template.loader import select_template
 from django.utils.translation import ugettext_lazy as _
 from djangular.forms import NgModelFormMixin, NgFormValidationMixin
 from djangular.styling.bootstrap3.forms import Bootstrap3ModelForm
-
 from shop import settings as shop_settings
-from shop.models.customer import CustomerModel as Customer
+from shop.models.customer import CustomerModel
 
 
 class RegisterUserForm(NgModelFormMixin, NgFormValidationMixin, Bootstrap3ModelForm):
@@ -31,13 +29,13 @@ class RegisterUserForm(NgModelFormMixin, NgFormValidationMixin, Bootstrap3ModelF
                                  min_length=6, help_text=_("Confirm password."))
 
     class Meta:
-        model = get_user_model()
+        model = CustomerModel
         fields = ('email', 'password1', 'password2',)
 
     def __init__(self, data=None, instance=None, *args, **kwargs):
         if data and data.get('preset_password', False):
             pwd_length = max(self.base_fields['password1'].min_length, 8)
-            password = self._meta.model.objects.make_random_password(pwd_length)
+            password = get_user_model().objects.make_random_password(pwd_length)
             data['password1'] = data['password2'] = password
         super(RegisterUserForm, self).__init__(data=data, instance=instance, *args, **kwargs)
 
@@ -49,34 +47,40 @@ class RegisterUserForm(NgModelFormMixin, NgFormValidationMixin, Bootstrap3ModelF
 
     def clean(self):
         cleaned_data = super(RegisterUserForm, self).clean()
-        if cleaned_data['password1'] != cleaned_data['password2']:
-            msg = _("Passwords do not match")
-            raise ValidationError(msg)
-        if self._meta.model.objects.filter(username=cleaned_data['email']).exists():
-            msg = _("A customer with the e-mail address '{email}' already exists.\n"
-                    "If you have used this address previously, try to reset the password.")
-            raise ValidationError(msg.format(**cleaned_data))
+        # check for uniqueness of email address
+        if 'email' not in self.errors:
+            if get_user_model().objects.filter(email=cleaned_data['email']).exists():
+                msg = _("A customer with the e-mail address ‘{email}’ already exists.\n"
+                        "If you have used this address previously, try to reset the password.")
+                raise ValidationError(msg.format(**cleaned_data))
+        # check for matching passwords
+        if 'password1' not in self.errors and 'password2' not in self.errors:
+            if cleaned_data['password1'] != cleaned_data['password2']:
+                msg = _("Passwords do not match")
+                raise ValidationError(msg)
         return cleaned_data
 
     def save(self, request=None, commit=True):
+        self.instance.recognized = CustomerModel.REGISTERED
+        self.instance.user.is_active = True
+        self.instance.user.email = self.cleaned_data['email']
+        self.instance.user.set_password(self.cleaned_data['password1'])
+        customer = super(RegisterUserForm, self).save(commit)
+        password = self.cleaned_data['password1']
         if self.cleaned_data['preset_password']:
-            self._send_password(request)
-        self.instance.is_registered = self.instance.is_active = True
-        self.instance.username = self.cleaned_data['email']
-        return super(RegisterUserForm, self).save(commit)
+            self._send_password(request, customer.user, password)
+        user = authenticate(username=customer.user.get_username(), password=password)
+        login(request, user)
+        return customer
 
-    def _send_password(self, request):
-        from django.core.mail import send_mail
+    def _send_password(self, request, user, password):
         current_site = get_current_site(request)
-        site_name = current_site.name
-        domain = current_site.domain
         context = Context({
-            'email': self.cleaned_data['email'],
-            'password': self.cleaned_data['password1'],
-            'domain': domain,
-            'site_name': site_name,
-            'user': request.user,
-            'protocol': 'https' if request.is_secure() else 'http',
+            'site_name': current_site.name,
+            'absolute_base_uri': request.build_absolute_uri('/'),
+            'email': user.email,
+            'password': password,
+            'user': user,
         })
         subject = select_template([
             '{}/email/register-user-subject.txt'.format(shop_settings.APP_LABEL),
@@ -88,7 +92,7 @@ class RegisterUserForm(NgModelFormMixin, NgFormValidationMixin, Bootstrap3ModelF
             '{}/email/register-user-body.txt'.format(shop_settings.APP_LABEL),
             'shop/email/register-user-body.txt',
         ]).render(context)
-        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [context['email']])
+        user.email_user(subject, body)
 
 
 class ContinueAsGuestForm(ModelForm):
@@ -99,10 +103,10 @@ class ContinueAsGuestForm(ModelForm):
     scope_prefix = 'form_data'
 
     class Meta:
-        model = Customer
+        model = CustomerModel
         fields = ()  # this form doesn't show any fields
 
     def save(self, request=None, commit=True):
-        self.instance.set_guest()
-        print self.instance.is_guest()
+        self.instance.user.is_active = False
+        self.instance.recognized = CustomerModel.GUEST
         return super(ContinueAsGuestForm, self).save(commit)

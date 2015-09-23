@@ -1,3 +1,4 @@
 # -*- coding: utf-8 -*-
-from . import notification
-from . import customer
+from __future__ import unicode_literals
+from django.conf import settings
+from .notification import Notification, NotificationAttachment
