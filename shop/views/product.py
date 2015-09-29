@@ -38,11 +38,9 @@ class ProductListView(generics.ListAPIView):
     def paginate_queryset(self, queryset):
         page = super(ProductListView, self).paginate_queryset(queryset)
         try:
-            self.paginator = page.paginator
+            return page
         except AttributeError:
-            # if pagination is disabled, paginate_queryset will have returned None
-            return None
-        return page
+            return queryset
 
     def filter_queryset(self, queryset):
         self.filter_context = None
