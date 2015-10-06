@@ -7,7 +7,7 @@ from shop.rest import serializers
 
 
 class BaseViewSet(viewsets.ModelViewSet):
-    paginate_by = None
+    pagination_class = None
 
     def get_queryset(self):
         cart = CartModel.objects.get_from_request(self.request)
