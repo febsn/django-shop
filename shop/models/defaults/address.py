@@ -14,4 +14,5 @@ class Address(address.BaseAddress):
     street = models.CharField(max_length=50, verbose_name=_("Street"))
     zip_code = models.CharField(max_length=10, verbose_name=_("ZIP"))
     location = models.CharField(max_length=50, verbose_name=_("Location"))
-    country = models.CharField(max_length=3, choices=address.ISO_3166_CODES)
+    country = models.CharField(max_length=3, choices=address.ISO_3166_CODES,
+        verbose_name=_("Country"))

@@ -215,7 +215,8 @@ class ShippingMethodForm(DialogForm):
 class ExtraAnnotationForm(DialogForm):
     scope_prefix = 'data.extra_annotation'
 
-    annotation = fields.CharField(required=False, widget=widgets.Textarea)
+    annotation = fields.CharField(required=False, widget=widgets.Textarea,
+        verbose_name=_("Annotation"))
 
     @classmethod
     def form_factory(cls, request, data, cart):
