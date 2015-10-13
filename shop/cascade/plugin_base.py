@@ -23,6 +23,7 @@ class ShopPluginBase(CascadePluginBase):
     module = "Shop"
     require_parent = False
     allow_children = False
+    search_fulltext = False
 
 
 @python_2_unicode_compatible
