@@ -106,8 +106,8 @@ class CustomerProxy(get_user_model()):
         verbose_name = _("Customer")
         verbose_name_plural = _("Customers")
 
-try:
-    admin.site.unregister(get_user_model())
-except admin.sites.NotRegistered:
-    pass
+#try:
+#    admin.site.unregister(get_user_model())
+#except admin.sites.NotRegistered:
+#    pass
 admin.site.register(CustomerProxy, CustomerAdmin)
